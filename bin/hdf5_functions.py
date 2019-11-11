@@ -24,6 +24,7 @@ import pyrap.tables as pt
 
 __author__ = 'Sean Mooney'
 
+# TODO run loop 2 on someone else's field
 # TODO python 3 compatibility?
 # TODO switch to interpolating LoSoTo solutions with NaN
 # TODO refactor code
@@ -41,7 +42,7 @@ __author__ = 'Sean Mooney'
 #      matched this other time axes. Is this correct? It looks suspiciously
 #      like one was added by mistake but it might be to do with the fact that
 #      not all time axes in solution tables are the same. Check it out.
-# TODO fix the big error on line 1277!
+# TODO fix the big error on line 1277 and remove debugging print statements
 # TODO ensure all hdf5s use the same reference station! It is critical that all
 #      HDF5s use the same reference station. Otherwise, taking solutions for
 #      different stations from different HDF5s would be incorrect. So a check
@@ -102,20 +103,20 @@ def make_ds9_region_file(dir_dict, ds9_region_file='directions.reg',
             cDEC.append(dec)
             cUNIT.append('radians')
 
-         with open(ds9_region_file, 'a+') as the_file:
-             for ra, dec, unit in zip(cRA, cDEC, cUNIT):
-                 if unit[:3] == 'rad':  # convert to degrees
-                     ra = ra * 180 / np.pi
-                     dec = dec * 180 / np.pi
-                     unit = 'degrees'
-                 RA = str(ra)
-                 ra = str(np.round(ra, 3))
-                 DEC = str(dec)
-                 dec = str(np.round(dec, 3))
-                 radius = str(radius)
-                 the_file.write('circle(' + RA + unit[0] + ',' + DEC + unit[0] +
-                                ',' + radius + '") # width=2 color=cyan text'
-                                '={cal ' + ra + ', ' + dec + '}\n')
+        with open(ds9_region_file, 'a+') as the_file:
+            for ra, dec, unit in zip(cRA, cDEC, cUNIT):
+                if unit[:3] == 'rad':  # convert to degrees
+                    ra = ra * 180 / np.pi
+                    dec = dec * 180 / np.pi
+                    unit = 'degrees'
+                RA = str(ra)
+                ra = '{:.3f}'.format(ra)
+                DEC = str(dec)
+                dec = '{:.3f}'.format(dec)
+                radius = str(radius)
+                the_file.write('circle(' + RA + unit[0] + ',' + DEC + unit[0] +
+                               ',' + radius + '") # width=2 color=cyan text'
+                               '={cal ' + ra + ', ' + dec + '}\n')
 
 
 def dir_from_ms(ms, verbose=False):
@@ -2429,11 +2430,9 @@ def main(calibrators_ms, delaycal_ms='../L*_SB001_*_*_1*MHz.msdpppconcat',
     dir_dict['ra'] = rad_ra_list
     dir_dict['dec'] = rad_dec_list
 
-    make_ds9_region_file(dir_dict=dir_dict,
-                         ds9_region_file=(os.path.dirname(mtf) +
-                                          '/direcitons.reg')
-
-
+    make_ds9_region_file(dir_dict=dir_dict,  # includes calibrators, directions
+                         ds9_region_file=(os.path.dirname(os.path.dirname(mtf +
+                                          '/')) + '/direcitons.reg'))
     make_blank_mtf(mtf=mtf)  # create the master text file if it does not exist
     sources = []
     for ms in ms_list:
