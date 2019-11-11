@@ -24,32 +24,36 @@ import pyrap.tables as pt
 
 __author__ = 'Sean Mooney'
 
-# NOTE no pandas
 # TODO python 3 compatibility?
-# TODO split into multiple scripts
 # TODO switch to interpolating LoSoTo solutions with NaN
-# TODO is there an easier way to add soltabs?
-# TODO remove repeated code, swap range(len()) to enumerate, etc
-# TODO tidy docstrings (numpydoc docstring format ideally, e.g. see
-#      residual_tec_solve)
-# TODO change print commands to logging commands
+# TODO refactor code
+# TODO tidy docstrings (numpydoc docstring format; e.g. see residual_tec_solve)
+# TODO use logging module instead of print
 # TODO only uses default loop 3 parameters
-# TODO https://github.com/mooneyse/lb-loop-2/issues/11
-# TODO https://github.com/mooneyse/lb-loop-2/issues/10
-# TODO https://github.com/mooneyse/lb-loop-2/issues/9
-# TODO https://github.com/mooneyse/lb-loop-2/issues/6
-# TODO https://github.com/mooneyse/lb-loop-2/issues/5
-# TODO add a function to output something like this:
-#      https://i.imgur.com/G0BZktL.png
-# TODO possibly change the directions to be read in as a dictionary
-# TODO check that the documentation for each function has the right format and
-#      parameters
-# TODO read in a text file called directions.txt instead of a dictionary,
-#      ideally giving the option, and let the directions be in degrees,
-#      radians, or sexagesimals.
+# TODO put back in resiudal tec parallelisation
+# TODO add a function to output a ds9 region file marking the directions
 # TODO plot the h5parms with losoto
-# TODO time how long loop 2 takes and see if there are ways to increase the
-#      performance. apply_tec should run in parallel.
+# TODO benchmark loop 2 and improve increase the performance
+# TODO where we have makeSoltab, write to the history how it is created, giving
+#      the direction that the solutions for each station came from. This is in
+#      make_h5parm_{ra}_{dec}.txt already.
+# TODO Some time axes come out with 1029 timesteps after interpolation and when
+#      matched this other time axes. Is this correct? It looks suspiciously
+#      like one was added by mistake but it might be to do with the fact that
+#      not all time axes in solution tables are the same. Check it out.
+# TODO fix the big error on line 1277!
+# TODO ensure all hdf5s use the same reference station! It is critical that all
+#      HDF5s use the same reference station. Otherwise, taking solutions for
+#      different stations from different HDF5s would be incorrect. So a check
+#      needs to be introduced for this (by seeing which station has solutions
+#      of zero), where it raises an error if it is not the case. Better still,
+#      write a function which converts the solutions from one reference station
+#      to another, and do this if necessary. (First, make sure the new station
+#      we are using as the reference is present in all HDF5s.)
+# TODO Do we use WEIGHT_SPECTRUM or WEIGHT? And does it make sense to include
+#      this while adding things (not averaging)? e.g. When combining weights,
+#      should I take their intersection or average? When adding data, what role
+#      should the weights play?
 
 
 def dir_from_ms(ms, verbose=False):
@@ -1265,16 +1269,34 @@ def add_amplitude_and_phase_solutions(diag_A_1, diag_P_1, diag_A_2, diag_P_2):
 
         for i in range(diag_A_1.shape[1]):
             amplitude_1_2, phase_1_2 = [], []
+            print('----------------------------------------------------------')
+            print(diag_A_1.shape, diag_P_1.shape,
+                  diag_A_2.shape, diag_P_2.shape)
+            try:
+                for A1, P1, A2, P2 in zip(diag_A_1[:, i], diag_P_1[:, i],
+                                          diag_A_2[:, i], diag_P_2[:, i]):
+                    complex_1 = A1 * complex(np.cos(P1), np.sin(P1))
+                    complex_2 = A2 * complex(np.cos(P2), np.sin(P2))
+                    complex_1_2 = complex_1 + complex_2
 
-            for A1, P1, A2, P2 in zip(diag_A_1[:, i], diag_P_1[:, i],
-                                      diag_A_2[:, i], diag_P_2[:, i]):
-                complex_1 = A1 * complex(np.cos(P1), np.sin(P1))
-                complex_2 = A2 * complex(np.cos(P2), np.sin(P2))
-                complex_1_2 = complex_1 + complex_2
+                    amplitude_1_2.append(abs(complex_1_2))
+                    phase_1_2.append(np.arctan2(complex_1_2.imag,
+                                                complex_1_2.real))
+            except:
+                print('This is a hack! Fix it ASAP, it is wrong')  # NB
+                '''This gets an index error because the diag_A/P_1 have 6 freq
+                axes and diag_A/P_2 have 1 freq axis so defining i as the range
+                for diag_A/P_1 gives i up to 6, and at i == 2 i have line 1267
+                saying diag_A_2[:,i] with i = 2, but i is 1 max! so it fails'''
+                for A1, P1, A2, P2 in zip(diag_A_1[:, 0], diag_P_1[:, 0],
+                                          diag_A_2[:, 0], diag_P_2[:, 0]):
+                    complex_1 = A1 * complex(np.cos(P1), np.sin(P1))
+                    complex_2 = A2 * complex(np.cos(P2), np.sin(P2))
+                    complex_1_2 = complex_1 + complex_2
 
-                amplitude_1_2.append(abs(complex_1_2))
-                phase_1_2.append(np.arctan2(complex_1_2.imag,
-                                            complex_1_2.real))
+                    amplitude_1_2.append(abs(complex_1_2))
+                    phase_1_2.append(np.arctan2(complex_1_2.imag,
+                                                complex_1_2.real))
 
             amplitude_final[:, i] = amplitude_1_2
             phase_final[:, i] = phase_1_2
@@ -2400,7 +2422,7 @@ def main(calibrators_ms, delaycal_ms='../L*_SB001_*_*_1*MHz.msdpppconcat',
           'parallel'.format(len(parsets), cores))
     processes = set()
     for name in parsets:
-        processes.add(subprocess.Popen(['NDPPP', name]))
+        processes.add(subprocess.Popen(['NDPPP', '--help']))  # NB NB NB name
         if len(processes) >= cores:
             os.wait()
             processes.difference_update(
@@ -2487,10 +2509,13 @@ def main(calibrators_ms, delaycal_ms='../L*_SB001_*_*_1*MHz.msdpppconcat',
     print('Updating the list')
     print('msouts_tec:', msouts_tec)
     print('combined_h5s:', combined_h5s)
-    for msout, increm_h5 in zip(msouts, combined_h5s):
+    for msout, increm_h5 in zip(msouts_tec, combined_h5s):
         # crd = ', '.join(msout.split('_')[-3:-1])
         # print('Combining initial + incremental solutions for {}'.format(crd))
-        update_list(initial_h5parm=msout[:-2] + 'h5',
+        # NB change msout[:-2] + 'h5' to increm_h5 + something, it should be eg
+        # 'direction_133.305_19.515.h5'
+        print('starting with', msout[:-7] + '.h5', increm_h5)
+        update_list(initial_h5parm=msout[:-7] + '.h5',
                     incremental_h5parm=increm_h5,
                     mtf=mtf,
                     threshold=threshold)
