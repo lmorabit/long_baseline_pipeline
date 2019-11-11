@@ -56,6 +56,68 @@ __author__ = 'Sean Mooney'
 #      should the weights play?
 
 
+def make_ds9_region_file(dir_dict, ds9_region_file='directions.reg',
+                         radius=120, caldir=''):
+    """Make a ds9 region file for the directions.
+    """
+    if not os.path.isfile(ds9_region_file):  # if it does not already exist
+
+        region_header = ('# Region file format: DS9 version 4.1\nglobal '
+                         'color=green width=1 font="helvetica 10 normal roman"'
+                         ' select=1 highlite=1 dash=0 fixed=0 edit=1 move=1 '
+                         'include=1 source=1\nfk5\n\n')
+
+        print('Creating the ds9 region file called {} for the '
+              'calibrators'.format(ds9_region_file))
+        with open(ds9_region_file, 'w+') as the_file:
+            the_file.write(region_header)
+
+        # new directions
+        with open(ds9_region_file, 'a+') as the_file:
+            for ra, dec, unit in zip(dir_dict['ra'], dir_dict['dec'],
+                                     dir_dict['unit']):
+                if unit[:3] == 'rad':  # convert to degrees
+                    ra = ra * 180 / np.pi
+                    dec = dec * 180 / np.pi
+                    unit = 'degrees'
+                RA = str(ra)
+                ra = str(np.round(ra, 3))
+                DEC = str(dec)
+                dec = str(np.round(dec, 3))
+                radius = str(radius)
+                the_file.write('circle(' + RA + unit[0] + ',' + DEC + unit[0] +
+                               ',' + radius + '") # width=2 color=magenta text'
+                               '={dir ' + ra + ', ' + dec + '}\n')
+
+        # calibrators used
+        if caldir == '':
+            caldir = os.path.dirname(ds9_region_file + '/loop3*.apply_tec')
+        cals = glob.glob(caldir)
+        cRA, cDEC, cUNIT = [], [], []
+        for cal in cals:
+            cal = cal.replace('loop3_', '')
+            taql_cmd = 'select DIRECTION from {}/POINTING limit 1'.format(cal)
+            ra, dec = pt.taql(taql_cmd)[0]['DIRECTION'].flatten()
+            cRA.append(ra)
+            cDEC.append(dec)
+            cUNIT.append('radians')
+
+         with open(ds9_region_file, 'a+') as the_file:
+             for ra, dec, unit in zip(cRA, cDEC, cUNIT):
+                 if unit[:3] == 'rad':  # convert to degrees
+                     ra = ra * 180 / np.pi
+                     dec = dec * 180 / np.pi
+                     unit = 'degrees'
+                 RA = str(ra)
+                 ra = str(np.round(ra, 3))
+                 DEC = str(dec)
+                 dec = str(np.round(dec, 3))
+                 radius = str(radius)
+                 the_file.write('circle(' + RA + unit[0] + ',' + DEC + unit[0] +
+                                ',' + radius + '") # width=2 color=cyan text'
+                                '={cal ' + ra + ', ' + dec + '}\n')
+
+
 def dir_from_ms(ms, verbose=False):
     """Gets the pointing centre (right ascension and declination) from the
     measurement set.
@@ -2367,6 +2429,11 @@ def main(calibrators_ms, delaycal_ms='../L*_SB001_*_*_1*MHz.msdpppconcat',
     dir_dict['ra'] = rad_ra_list
     dir_dict['dec'] = rad_dec_list
 
+    make_ds9_region_file(dir_dict=dir_dict,
+                         ds9_region_file=(os.path.dirname(mtf) +
+                                          '/direcitons.reg')
+
+
     make_blank_mtf(mtf=mtf)  # create the master text file if it does not exist
     sources = []
     for ms in ms_list:
@@ -2422,7 +2489,7 @@ def main(calibrators_ms, delaycal_ms='../L*_SB001_*_*_1*MHz.msdpppconcat',
           'parallel'.format(len(parsets), cores))
     processes = set()
     for name in parsets:
-        processes.add(subprocess.Popen(['NDPPP', '--help']))  # NB NB NB name
+        processes.add(subprocess.Popen(['NDPPP', name]))
         if len(processes) >= cores:
             os.wait()
             processes.difference_update(
