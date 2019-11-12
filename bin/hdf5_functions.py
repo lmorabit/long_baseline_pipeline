@@ -55,6 +55,10 @@ __author__ = 'Sean Mooney'
 #      this while adding things (not averaging)? e.g. When combining weights,
 #      should I take their intersection or average? When adding data, what role
 #      should the weights play?
+#      2019-11-12 00:01:26 DEBUG   genericpipeline.executable_args: Converted TEC to phase and added it to phase.
+#      2019-11-12 00:01:26 WARNING genericpipeline.executable_args: 2019-11-12 00:01:26 - INFO: ^[[32mSoltab "tec000" deleted.^[[0m
+#      2019-11-12 00:01:26 WARNING genericpipeline.executable_args: 2019-11-12 00:01:26 - INFO: ^[[32mSoltab "phase000" deleted.^[[0m
+#      2019-11-12 00:01:26 WARNING genericpipeline.executable_args: 2019-11-12 00:01:26 - INFO: ^[[32mSoltab "phase001000" renamed to "phase000".^[[0m
 
 
 def make_ds9_region_file(dir_dict, ds9_region_file='directions.reg',
@@ -92,7 +96,7 @@ def make_ds9_region_file(dir_dict, ds9_region_file='directions.reg',
 
         # calibrators used
         if caldir == '':
-            caldir = os.path.dirname(ds9_region_file + '/loop3*.apply_tec')
+            caldir = os.path.dirname(ds9_region_file) + '/loop3*.apply_tec'
         cals = glob.glob(caldir)
         cRA, cDEC, cUNIT = [], [], []
         for cal in cals:
@@ -1332,9 +1336,9 @@ def add_amplitude_and_phase_solutions(diag_A_1, diag_P_1, diag_A_2, diag_P_2):
 
         for i in range(diag_A_1.shape[1]):
             amplitude_1_2, phase_1_2 = [], []
-            print('----------------------------------------------------------')
-            print(diag_A_1.shape, diag_P_1.shape,
-                  diag_A_2.shape, diag_P_2.shape)
+            # print('--------------------------------------------------------')
+            # print(diag_A_1.shape, diag_P_1.shape,
+            #       diag_A_2.shape, diag_P_2.shape)
             try:
                 for A1, P1, A2, P2 in zip(diag_A_1[:, i], diag_P_1[:, i],
                                           diag_A_2[:, i], diag_P_2[:, i]):
@@ -1451,6 +1455,8 @@ def sort_axes(soltab, tec=False):
                                         ['time', 'freq', 'ant', 'pol', 'dir'])
 
     return reordered_values, reordered_weights
+
+
 
 
 def rejig_solsets(h5parm, is_tec=True, add_tec_to_phase=False):
@@ -2312,6 +2318,8 @@ def update_list(initial_h5parm, incremental_h5parm, mtf, threshold=0.25,
     # and sol002 has tec solutions (tec000) - however, we want to change this
     # to produce one hdf5 with 1 solset, which has phase000, amplitude000,
     # and tec000
+    print('Plotting solutions with LoSoTo, is that alright with you?')
+    plot_h5(h5parm=combined_h5parm, ncpu=cores)
     print('Making final HDF5 file.')
     rejigged_h5parm = rejig_solsets(h5parm=combined_h5parm,
                                     is_tec=tec_included, add_tec_to_phase=True)
@@ -2320,6 +2328,64 @@ def update_list(initial_h5parm, incremental_h5parm, mtf, threshold=0.25,
     evaluate_solutions(h5parm=rejigged_h5parm, mtf=mtf, threshold=threshold)
 
     return rejigged_h5parm
+
+
+def plot_h5(h5parm, ncpu=4, phasesol='sol000', diagsol='sol001',
+            tecsol='sol002'):
+    """Make losoto plots for a h5parm.
+    """
+    # e.g. h5parm = direction_133.305_19.515_final-ddf.h5
+    parset = h5parm.replace('final-ddf.h5', 'losoto.parset')
+    print('******************************************************************')
+    print('h5parm:', h5parm)
+    print('parset:', parset)
+    # e.g. parset = direction_133.305_19.515.MS_losoto.parset
+    prefix = h5parm.replace('final-ddf.h5', '')
+    now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    with open(parset, 'w') as f:  # create the parset
+        f.write('# created by plot_h5 in loop 2 at {}\n\n'.format(now))
+        f.write('ncpu        = {}\n\n'.format(ncpu))
+
+        f.write('[plotPhase]\n')
+        f.write('plotFlag    = False\n')
+        f.write('axesInPlot  = [time]\n')
+        f.write('prefix      = {}_phase_\n'.format(prefix))
+        f.write('soltab      = {}/phase000\n'.format(phasesol))
+        f.write('axisInTable = ant\n')
+        f.write('operation   = PLOT\n')
+        f.write('refAnt      = ST001\n')
+        f.write('minmax      = [-3.14, 3.14]\n\n')
+
+        f.write('[plotDiagonalPhase]\n')
+        f.write('plotFlag    = False\n')
+        f.write('axesInPlot  = [time]\n')
+        f.write('prefix      = {}_diag_phase_\n'.format(prefix))
+        f.write('soltab      = {}/phase000\n'.format(diagsol))
+        f.write('axisInTable = ant\n')
+        f.write('operation   = PLOT\n')
+        f.write('refAnt      = ST001\n')
+        f.write('minmax      = [-3.14, 3.14]\n\n')
+
+        f.write('[plotDiagonalAmplitude]\n')
+        f.write('plotFlag    = False\n')
+        f.write('axesInPlot  = [time]\n')
+        f.write('prefix      = {}_diag_amp_\n'.format(prefix))
+        f.write('soltab      = {}/amplitude000\n'.format(diagsol))
+        f.write('axisInTable = ant\n')
+        f.write('operation   = PLOT\n\n')
+
+        f.write('[plotTEC]\n')
+        f.write('plotFlag    = False\n')
+        f.write('axesInPlot  = [time]\n')
+        f.write('prefix      = {}_tec_\n'.format(prefix))
+        f.write('soltab      = {}/tec000\n'.format(tecsol))
+        f.write('axisInTable = ant\n')
+        f.write('operation   = PLOT\n')
+        f.write('refAnt      = ST001\n')
+
+    print('Created {}'.format(parset))
+    print('Plotting solutions from {}'.format(h5parm))
+    subprocess.check_output(['losoto', h5parm, parset])
 
 
 def main(calibrators_ms, delaycal_ms='../L*_SB001_*_*_1*MHz.msdpppconcat',
@@ -2407,10 +2473,10 @@ def main(calibrators_ms, delaycal_ms='../L*_SB001_*_*_1*MHz.msdpppconcat',
     # check if units are given in the directions file and assume radians if not
     if 'units' in dir_dict:
         dir_dict['unit'] = dir_dict.pop('units')
+    rads = []
+    for r in range(len(dir_dict['ra'])):
+        rads.append('radians')
     if 'unit' not in dir_dict:
-        rads = []
-        for r in range(len(dir_dict['ra'])):
-            rads.append('radians')
         dir_dict['unit'] = rads   # assume radians if no units given
     for ra, dec, unit in zip(dir_dict['ra'], dir_dict['dec'],
                              dir_dict['unit']):
@@ -2429,10 +2495,11 @@ def main(calibrators_ms, delaycal_ms='../L*_SB001_*_*_1*MHz.msdpppconcat',
                                       'degrees'.format(directions_file))
     dir_dict['ra'] = rad_ra_list
     dir_dict['dec'] = rad_dec_list
+    dir_dict['unit'] = rads
 
     make_ds9_region_file(dir_dict=dir_dict,  # includes calibrators, directions
                          ds9_region_file=(os.path.dirname(os.path.dirname(mtf +
-                                          '/')) + '/direcitons.reg'))
+                                          '/')) + '/directions.reg'))
     make_blank_mtf(mtf=mtf)  # create the master text file if it does not exist
     sources = []
     for ms in ms_list:
@@ -2585,7 +2652,9 @@ def main(calibrators_ms, delaycal_ms='../L*_SB001_*_*_1*MHz.msdpppconcat',
                     incremental_h5parm=increm_h5,
                     mtf=mtf,
                     threshold=threshold)
-        print('one done!')
+
+        # plot_h5(h5parm=increm_h5, ncpu=cores)  # plot solutions
+
     print('Loop 2 is done')
 
 
