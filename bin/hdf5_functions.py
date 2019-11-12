@@ -24,10 +24,14 @@ import pyrap.tables as pt
 
 __author__ = 'Sean Mooney'
 
+# TODO ds9 region file gets ra, dec from apply_tec ms using pointing centre
+#      with taql but this gives the original pointing centre so trying it a
+#      different way with pyrap.tables
 # TODO run loop 2 on someone else's field
 # TODO python 3 compatibility?
 # TODO switch to interpolating LoSoTo solutions with NaN
 # TODO refactor code
+# TODO from __future__ import division?
 # TODO tidy docstrings (numpydoc docstring format; e.g. see residual_tec_solve)
 # TODO use logging module instead of print
 # TODO only uses default loop 3 parameters
@@ -55,15 +59,30 @@ __author__ = 'Sean Mooney'
 #      this while adding things (not averaging)? e.g. When combining weights,
 #      should I take their intersection or average? When adding data, what role
 #      should the weights play?
-#      2019-11-12 00:01:26 DEBUG   genericpipeline.executable_args: Converted TEC to phase and added it to phase.
-#      2019-11-12 00:01:26 WARNING genericpipeline.executable_args: 2019-11-12 00:01:26 - INFO: ^[[32mSoltab "tec000" deleted.^[[0m
-#      2019-11-12 00:01:26 WARNING genericpipeline.executable_args: 2019-11-12 00:01:26 - INFO: ^[[32mSoltab "phase000" deleted.^[[0m
-#      2019-11-12 00:01:26 WARNING genericpipeline.executable_args: 2019-11-12 00:01:26 - INFO: ^[[32mSoltab "phase001000" renamed to "phase000".^[[0m
 
 
 def make_ds9_region_file(dir_dict, ds9_region_file='directions.reg',
                          radius=120, caldir=''):
-    """Make a ds9 region file for the directions.
+    """Make a ds9 region file for the directions to be solved in and for the
+    calibrators used.
+
+    Parameters
+    ----------
+    dir_dict : dictionary
+        Dictionary containing the directions.
+    ds9_region_file : string
+        Name for the region file that will be created.
+    radius : float or integer, optional
+        Radius of the circles to be drawn in the region file in arcseconds. The
+        default is 120.
+    calidr : string, optional
+        Directory of the calibrator loop 3 folders. The default is ``. If
+        empty, the same directory as the ds9_region_file is used.
+
+    Returns
+    -------
+    None
+        Nothing is returned.
     """
     if not os.path.isfile(ds9_region_file):  # if it does not already exist
 
@@ -101,8 +120,9 @@ def make_ds9_region_file(dir_dict, ds9_region_file='directions.reg',
         cRA, cDEC, cUNIT = [], [], []
         for cal in cals:
             cal = cal.replace('loop3_', '')
-            taql_cmd = 'select DIRECTION from {}/POINTING limit 1'.format(cal)
-            ra, dec = pt.taql(taql_cmd)[0]['DIRECTION'].flatten()
+            # taqlcmd = 'select DIRECTION from {}/POINTING limit 1'.format(cal)
+            # ra, dec = pt.taql(taqlcmd)[0]['DIRECTION'].flatten()
+            ra, dec = dir_from_ms(cal)
             cRA.append(ra)
             cDEC.append(dec)
             cUNIT.append('radians')
@@ -131,6 +151,8 @@ def dir_from_ms(ms, verbose=False):
     ----------
     ms : string
         File path of the measurement set.
+    verbose : boolean, optional
+        If True, print information. The default is False.
 
     Returns
     -------
@@ -153,12 +175,14 @@ def dir_from_ms(ms, verbose=False):
 
 
 def combine_h5s(phase_h5='', amplitude_h5='', tec_h5='', loop3_dir=''):
-    """A function that takes a HDF5 with phase000 and a HDF5 with amplitude000
+    """Combine two HDF5 files into one.
+
+    A function that takes a HDF5 with phase000 and a HDF5 with amplitude000
     and phase000 for a particular direction and combines them into one HDF5.
     This is necessary for the way loop 2 works. The dir2phasesol function
     includes amplitude (and also TEC) but it reads the files from working_data
     which is the list of HDF5s that have the desired phase solutions. So this
-    function allows the amplitudes to be brought into the fold. I only copy
+    function allows the amplitudes to be brought into the fold. We only copy
     across the solution tables; the source and antenna tables should come along
     too.
 
@@ -172,17 +196,18 @@ def combine_h5s(phase_h5='', amplitude_h5='', tec_h5='', loop3_dir=''):
 
     Parameters
     ----------
-    phase_h5 : string (default = '')
-        Name of the HDF5 file with the phase solutions.
-    amplitude_h5 : string (default = '')
-        Name of the HDF5 file with the diagonal solutions.
-    tec_h5 : string (default = '')
-        Name of the HDF5 file with the TEC solutions.
-    loop3_dir : string (default = '')
+    phase_h5 : string, optional
+        Name of the HDF5 file with the phase solutions. The default is ``.
+    amplitude_h5 : string, optional
+        Name of the HDF5 file with the diagonal solutions. The default is ``.
+    tec_h5 : string, optional
+        Name of the HDF5 file with the TEC solutions. The default is ``.
+    loop3_dir : string, optional
         Instead of a phase_h5 and an amplitude_h5, the directory of the loop 3
         run can be given, and the function will use the phase and amplitude
         HDF5 files relating to the furthest progress. This loop 3 directory
-        will take priority if it is given with phase_h5 and amplitude_h5.
+        will take priority if it is given with phase_h5 and amplitude_h5. The
+        default is ``.
 
     Returns
     -------
@@ -192,7 +217,8 @@ def combine_h5s(phase_h5='', amplitude_h5='', tec_h5='', loop3_dir=''):
     """
 
     if loop3_dir:
-        loop3_files = [loop3_dir + '/' + f for f in os.listdir(loop3_dir) if os.path.isfile(os.path.join(loop3_dir, f))]
+        loop3_files = [loop3_dir + '/' + f for f in os.listdir(loop3_dir) if
+                       os.path.isfile(os.path.join(loop3_dir, f))]
         only_h5s = [f for f in loop3_files if f.endswith('.h5')]
         amplitude_h5s = fnmatch.filter(only_h5s, '*_A_*.h5')
         for h5 in amplitude_h5s:
@@ -219,18 +245,28 @@ def combine_h5s(phase_h5='', amplitude_h5='', tec_h5='', loop3_dir=''):
 
     # reorder axes
     desired_axesNames = ['time', 'freq', 'ant', 'pol']  # NOTE no 'dir' axis
-    p_val_reordered = reorderAxes(p_soltab.val, p_soltab.getAxesNames(), desired_axesNames)
-    p_weight_reordered = reorderAxes(p_soltab.weight, p_soltab.getAxesNames(), desired_axesNames)
+    p_val_reordered = reorderAxes(p_soltab.val, p_soltab.getAxesNames(),
+                                  desired_axesNames)
+    p_weight_reordered = reorderAxes(p_soltab.weight, p_soltab.getAxesNames(),
+                                     desired_axesNames)
 
-    a_A_val_reordered = reorderAxes(a_soltab_A.val, a_soltab_A.getAxesNames(), desired_axesNames)
-    a_A_weight_reordered = reorderAxes(a_soltab_A.weight, a_soltab_A.getAxesNames(), desired_axesNames)
+    a_A_val_reordered = reorderAxes(a_soltab_A.val, a_soltab_A.getAxesNames(),
+                                    desired_axesNames)
+    a_A_weight_reordered = reorderAxes(a_soltab_A.weight,
+                                       a_soltab_A.getAxesNames(),
+                                       desired_axesNames)
 
-    a_theta_val_reordered = reorderAxes(a_soltab_theta.val, a_soltab_theta.getAxesNames(), desired_axesNames)
-    a_theta_weight_reordered = reorderAxes(a_soltab_theta.weight, a_soltab_theta.getAxesNames(), desired_axesNames)
+    a_theta_val_reordered = reorderAxes(a_soltab_theta.val,
+                                        a_soltab_theta.getAxesNames(),
+                                        desired_axesNames)
+    a_theta_weight_reordered = reorderAxes(a_soltab_theta.weight,
+                                           a_soltab_theta.getAxesNames(),
+                                           desired_axesNames)
 
     # make new solution tables in the new h5parm
     new_h5 = phase_h5[:-3] + '_P_A.h5'  # lazy method
-    new_h5 = phase_h5[:-3] + '_phase_diag.h5' if not tec_h5 else phase_h5[:-3] + '_phase_diag_tec.h5'
+    new_h5 = (phase_h5[:-3] + '_phase_diag.h5' if not tec_h5 else phase_h5[:-3]
+              + '_phase_diag_tec.h5')
     n = lh5.h5parm(new_h5, readonly=False)
 
     n_phase_solset = n.makeSolset(solsetName='sol000')
@@ -305,11 +341,15 @@ def make_blank_mtf(mtf):
     """Create an empty master text file containing all of the LOFAR core,
     remote, and international stations, and ST001.
 
-    Args:
-    mtf (str): The master text file to be created.
+    Parameters
+    ----------
+    mtf : string
+        The name of the master text file to be created.
 
-    Returns:
-    The name of the master text file (str).
+    Returns
+    -------
+    String
+        The name of the master text file.
     """
 
     mtf_header = ('# h5parm, ra, dec, ST001, RS106HBA, RS205HBA, RS208HBA, '
@@ -340,16 +380,22 @@ def make_blank_mtf(mtf):
 
 
 def interpolate_nan(x_):
-    """Interpolate NaN values using this answer from Stack Overflow:
+    """Interpolate NaN values.
+
+    It uses this answer from Stack Overflow:
     https://stackoverflow.com/a/6520696/6386612. This works even if the first
     or last value is nan or if there are multiple nans. It raises an error if
     all values are nan.
 
-    Args:
-    x_ (list or NumPy array): Values to interpolate.
+    Parameters
+    ----------
+    x_ : list or NumPy array
+        Values to interpolate.
 
-    Returns:
-    The interpolated values. (NumPy array)
+    Returns
+    -------
+    NumPy array
+        The interpolated values.
     """
 
     x_ = np.array(x_)
@@ -365,38 +411,52 @@ def interpolate_nan(x_):
 def coherence_metric(xx, yy):
     """Calculates the coherence metric by comparing the XX and YY phases.
 
-    Args:
-    xx (list or NumPy array): One set of phase solutions.
-    yy (list or NumPy array): The other set of phase solutions.
+    Parameters
+    ----------
+    xx : list or NumPy array
+        One set of phase solutions.
+    yy : list or NumPy array
+        The other set of phase solutions.
 
-    Returns:
-    The coherence metric. (float)
+    Returns
+    -------
+    float
+        The coherence metric.
     """
-
     try:
         xx, yy = interpolate_nan(xx), interpolate_nan(yy)
-    except:  # TODO which exception is this?
+    except (ZeroDivisionError, ValueError, KeyError, IndexError, TypeError):
         # if the values are all nan, they cannot be interpolated so return a
-        # coherence value of nan also
+        # coherence value of nan also (which exception is this?)
         return np.nan
 
     return np.nanmean(np.gradient(abs(np.unwrap(xx - yy))) ** 2)
 
 
 def evaluate_solutions(h5parm, mtf, threshold=0.25, verbose=False):
-    """Get the direction from the h5parm. Evaluate the phase solutions in the
+    """Evaluate phase solutions in a h5parm.
+
+    Get the direction from the h5parm. Evaluate the phase solutions in the
     h5parm for each station using the coherence metric. Determine the validity
     of each coherence metric that was calculated. Append the right ascension,
     declination, and validity to the master text file.
 
-    Args:
-    h5parm (str): LOFAR HDF5 parameter file.
-    mtf (str): Master text file.
-    threshold (float; default=0.25): threshold to determine the goodness of
-        the coherence metric.
+    Parameters
+    ----------
+    h5parm : string
+        LOFAR HDF5 parameter file.
+    mtf : string
+        Master text file.
+    threshold : float, optional
+        Threshold to determine the goodness of the coherence metric. The
+        default is 0.25.
+    verbose : boolean, optional
+        Whether to print extra information. The default is False.
 
-    Returns:
-    The coherence metric for each station. (dict)
+    Returns
+    -------
+    dictionary
+        The coherence metric for each station.
     """
     print('Evaluating phase solutions in', h5parm)
     h = lh5.h5parm(h5parm)
@@ -424,12 +484,16 @@ def evaluate_solutions(h5parm, mtf, threshold=0.25, verbose=False):
                 cohs.append(coherence_metric(xx[:, i], yy[:, i]))
 
             coh = np.mean(cohs)
-            print('{} {} coherence: {:.3f} ({} frequency axes)'.format(h5parm, station, coh, num_freqs)) if verbose else None
+            if verbose:
+                print('{} {} coherence: {:.3f} ({} frequency'
+                      ' axes)'.format(h5parm, station, coh, num_freqs))
             evaluations[station] = coh  # 0 = best
 
-        except:  # if there is one frequency axis only
+        except (ValueError, KeyError, IndexError, TypeError):
+            # if there is one frequency axis only
             coh = coherence_metric(xx, yy)
-            print('{} {} coherence: {:.3f}'.format(h5parm, station, coh)) if verbose else None
+            if verbose:
+                print('{} {} coherence: {:.3f}'.format(h5parm, station, coh))
             evaluations[station] = coh  # 0 = best
 
     with open(mtf) as f:
@@ -457,17 +521,21 @@ def evaluate_solutions(h5parm, mtf, threshold=0.25, verbose=False):
     return evaluations
 
 
-def dir2phasesol_wrapper(mtf, directions=[], cores=4):  # , ms=''
+def dir2phasesol_wrapper(mtf, directions=[], cores=4):
     """Book-keeping to get the multiprocessing set up and running.
 
-    Args:
-    mtf (str): The master text file.
-    # ms (str): The measurement set.
-    directions (list; default = []): Directions in radians, of the form RA1,
-        Dec1, RA2, Dec2, etc.
-    cores (float; default = 4): Number of cores to use.
+    Parameters
+    ----------
+    mtf : string
+        The master text file.
+    directions : list or NumPy array, optional
+        Directions in radians in the form RA1, Dec1, RA2, Dec2, etc. The
+        default is [].
+    cores : float or integer
+        Number of cores to use. The default is 4.
 
-    Returns:
+    Returns
+    -------
     The names of the newly created h5parms in the directions specified. (list)
     """
 
@@ -1769,7 +1837,7 @@ def rejig_solsets(h5parm, is_tec=True, add_tec_to_phase=False):
         # NOTE so much repeated code here...
 
         # write new tec + phase solutions to the solution set
-        phase_sum = sol000.makeSoltab('phase001',
+        phase_sum = sol000.makeSoltab('newphase',
                                       axesNames=['time', 'freq', 'ant', 'pol',
                                                  'dir'],
                                       axesVals=[time_new, phase.freq,
@@ -1852,7 +1920,7 @@ def tec_to_phase(tec, tec_weight, frequency):
 
 
 def update_list(initial_h5parm, incremental_h5parm, mtf, threshold=0.25,
-                amplitudes_included=True, tec_included=True):
+                amplitudes_included=True, tec_included=True, cores=4):
     """Combine the phase solutions from the initial h5parm and the final
     h5parm. The initial h5parm contains the initial solutions and the final
     h5parm contains the incremental solutions so they need to be added to form
@@ -2386,6 +2454,12 @@ def plot_h5(h5parm, ncpu=4, phasesol='sol000', diagsol='sol001',
     print('Created {}'.format(parset))
     print('Plotting solutions from {}'.format(h5parm))
     subprocess.check_output(['losoto', h5parm, parset])
+    # move plots to new directory, e.g. direction_133.305_19.515_pngs
+    dir_for_plots = parset.replace('.MS_losoto.parset', '_pngs')
+    os.mkdir(dir_for_plots)
+    for png_image in glob.glob('direction_*.*_*.*_*_*.png'):
+        png_base = os.path.basename(png_image)
+        os.rename(png_image, dir_for_plots + '/' + png_base)
 
 
 def main(calibrators_ms, delaycal_ms='../L*_SB001_*_*_1*MHz.msdpppconcat',
@@ -2650,7 +2724,7 @@ def main(calibrators_ms, delaycal_ms='../L*_SB001_*_*_1*MHz.msdpppconcat',
         print('starting with', msout[:-7] + '.h5', increm_h5)
         update_list(initial_h5parm=msout[:-7] + '.h5',
                     incremental_h5parm=increm_h5,
-                    mtf=mtf,
+                    mtf=mtf, cores=cores,
                     threshold=threshold)
 
         # plot_h5(h5parm=increm_h5, ncpu=cores)  # plot solutions
