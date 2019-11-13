@@ -1408,7 +1408,9 @@ def apply_h5parm(h5parm, ms, col_out='DATA', solutions=['phase'], tidy=False,
 
 
 def add_amplitude_and_phase_solutions(diag_A_1, diag_P_1, diag_A_2, diag_P_2):
-    """Convert amplitude and phase solutions into complex numbers, add them,
+    """Add amplitude and phase solutions.
+
+    Convert amplitude and phase solutions into complex numbers, add them,
     and return the amplitude and phase components of the result. The solutions
     must be on the same time axis. The solutions should just be given as a list
     (or one dimensional array) with one solutions per timestep, or as an array
@@ -1443,12 +1445,6 @@ def add_amplitude_and_phase_solutions(diag_A_1, diag_P_1, diag_A_2, diag_P_2):
     NumPy array
         Summed phase solutions.
     """
-
-    # if diag_A_1 == '':
-    #     diag_A_1 = diag_A_2
-    # elif diag_A_2 == '':
-    #     diag_A_2 = diag_A_1
-
     # convert nan to zero, otherwise nan + x = nan, not x
 
     diag_A_1 = np.nan_to_num(diag_A_1)
@@ -1462,9 +1458,6 @@ def add_amplitude_and_phase_solutions(diag_A_1, diag_P_1, diag_A_2, diag_P_2):
 
         for i in range(diag_A_1.shape[1]):
             amplitude_1_2, phase_1_2 = [], []
-            # print('--------------------------------------------------------')
-            # print(diag_A_1.shape, diag_P_1.shape,
-            #       diag_A_2.shape, diag_P_2.shape)
             try:
                 for A1, P1, A2, P2 in zip(diag_A_1[:, i], diag_P_1[:, i],
                                           diag_A_2[:, i], diag_P_2[:, i]):
@@ -1475,7 +1468,7 @@ def add_amplitude_and_phase_solutions(diag_A_1, diag_P_1, diag_A_2, diag_P_2):
                     amplitude_1_2.append(abs(complex_1_2))
                     phase_1_2.append(np.arctan2(complex_1_2.imag,
                                                 complex_1_2.real))
-            except:
+            except IndexError:
                 print('This is a hack! Fix it ASAP, it is wrong')  # NB
                 '''This gets an index error because the diag_A/P_1 have 6 freq
                 axes and diag_A/P_2 have 1 freq axis so defining i as the range
@@ -1527,7 +1520,6 @@ def make_new_times(time1, time2):
     list
         New time axis.
     """
-
     times = [time1, time2]
     time_intervals = []
     for time in times:
@@ -1549,6 +1541,9 @@ def sort_axes(soltab, tec=False):
     ----------
     soltab : Losoto object
         Solution table.
+    tec : boolean, optional
+        Specify whether or not there is a TEC axis included. The default is
+        False.
 
     Returns
     -------
@@ -1559,7 +1554,6 @@ def sort_axes(soltab, tec=False):
         Weights ordered (time, frequency, antennas, polarisation, and
         direction), where a direction axis is included.
     """
-
     axes_names = soltab.getAxesNames()
     if 'dir' not in axes_names:  # add the direction dimension
         axes_names = ['dir'] + axes_names
@@ -1583,8 +1577,6 @@ def sort_axes(soltab, tec=False):
     return reordered_values, reordered_weights
 
 
-
-
 def rejig_solsets(h5parm, is_tec=True, add_tec_to_phase=False):
     """This is a specific funtion to take a h5parm with three solsets, where
     sol000 has phase solutions (phase000), sol001 has diagonal solutions
@@ -1598,10 +1590,10 @@ def rejig_solsets(h5parm, is_tec=True, add_tec_to_phase=False):
     h5parm : string
         The filename of the h5parm with the three solsets, including the
         filepath.
-    is_tec : boolean
+    is_tec : boolean, optional
         If true, the function exepcts TEC solutions to be in the HDF5 file too.
         The default value is True.
-    add_tec_to_phase : boolean
+    add_tec_to_phase : boolean, optional
         If true, the function will convert the TEC solutions to phase solutions
         and add them to the phase solutions. The default is False.
 
@@ -1917,7 +1909,14 @@ def rejig_solsets(h5parm, is_tec=True, add_tec_to_phase=False):
 
         # to test on cep3:
         # module load lofar losoto && ipython
-        # from hdf5_functions import update_list; update_list(initial_h5parm='/data020/scratch/sean/letsgetloopy/init.h5', incremental_h5parm='/data020/scratch/sean/letsgetloopy/increm.h5', mtf='/data020/scratch/sean/letsgetloopy/mtf.txt', threshold=0.25, tec_included=True)
+        # from hdf5_functions import update_list
+        # update_list(initial_h5parm='/data020/scratch/sean/letsgetloopy/'
+        #                            'init.h5',
+        #             incremental_h5parm='/data020/scratch/sean/letsgetloopy/'
+        #                                'increm.h5',
+        #             mtf='/data020/scratch/sean/letsgetloopy/mtf.txt',
+        #             threshold=0.25,
+        #             tec_included=True)
 
         # it works but one issue: i map tec solutions to both xx and yy when
         # converting to phase, so now the coherence metric for those solutions
@@ -1952,6 +1951,8 @@ def tec_to_phase(tec, tec_weight, frequency):
     -------
     array
         Phase solutions that the TEC has been converted to.
+    array
+        The weights associated with the TEC.
     """
     t, _, a, d = tec.shape  # direction axis but no polarisation axis
     f = 1 if type(frequency) is float else len(frequency)  # if an array
@@ -1987,14 +1988,21 @@ def update_list(initial_h5parm, incremental_h5parm, mtf, threshold=0.25,
 
     Parameters
     ----------
-    new_h5parm : string
+    initial_h5parm : string
         The initial h5parm (i.e. from dir2phasesol).
-    loop3_h5parm : string
+    incremental_h5parm : string
         The final h5parm from loop 3.
     mtf : string
         Master text file.
-    threshold : float (default=0.25)
-        Threshold determining goodness passed to evaluate_solutions.
+    threshold : float, optional
+        Threshold determining goodness passed to evaluate_solutions. The
+        default is 0.25.
+    amplitude_included : boolean, optional
+        Whether amplitude solutions are included. The default is True.
+    tec_included : boolean, optional
+        Whether TEC solutions are included. The default is True.
+    cores : float or integer
+        The number of cores to use. The default is 4.
 
     Returns
     -------
@@ -2459,6 +2467,27 @@ def update_list(initial_h5parm, incremental_h5parm, mtf, threshold=0.25,
 def plot_h5(h5parm, ncpu=4, phasesol='sol000', diagsol='sol001',
             tecsol='sol002'):
     """Make losoto plots for a h5parm.
+
+    Parameters
+    ----------
+    h5parm : string
+        Name of the h5parm file.
+    ncpu : integer or float, optional
+        The number of cores to use. The default is 4.
+    phasesol : string, optional
+        The name of the solset that contains the phase solutions. The default
+        is `sol000`.
+    diagsol : string, optional
+        The name of the solset that contains the diagonal solutions. The
+        default is `sol001`.
+    tecsol : string, optional
+        The name of the solset that contains the TEC solutions. The default is
+        `sol002`.
+
+    Returns
+    -------
+    NoneType
+        Nothing is returned.
     """
     # e.g. h5parm = direction_133.305_19.515_final-ddf.h5
     parset = h5parm.replace('final.h5', 'losoto.parset')
@@ -2513,7 +2542,7 @@ def plot_h5(h5parm, ncpu=4, phasesol='sol000', diagsol='sol001',
     print('Plotting solutions from {}'.format(h5parm))
     subprocess.check_output(['losoto', h5parm, parset])
     # move plots to new directory, e.g. direction_133.305_19.515_pngs
-    dir_for_plots = parset.replace('.MS_losoto.parset', '_pngs')
+    dir_for_plots = parset.replace('_losoto.parset', '_pngs')
     os.mkdir(dir_for_plots)
     for png_image in glob.glob('direction_*.*_*.*_*_*.png'):
         png_base = os.path.basename(png_image)
@@ -2539,43 +2568,43 @@ def main(calibrators_ms, delaycal_ms='../L*_SB001_*_*_1*MHz.msdpppconcat',
     ----------
     calibrators_ms : string or list
         List of the calibrator measurement sets outputted by parallel_split.py.
-    delaycal_ms : str, optional
+    delaycal_ms : string, optional
         Filepath including wildcard of the LB-Delay-Calibrator.parset
         concatenated measurement sets. The default is
         `../L*_SB001_*_*_1*MHz.msdpppconcat`.
-    mtf : str, optional
+    mtf : string, optional
         Name of the master text file to be created. The default is `mtf.txt`.
     threshold : float, optional
         Threshold to determine goodness of solutions. The default is 0.25.
-    cores : int, optional
+    cores : integer or float, optional
         Number of CPUs available when executing steps in parallel. The default
         is 4.
-    time_step : int, optional
+    time_step : string or float, optional
         Averaging step in time. For more see
         https://www.astron.nl/lofarwiki/doku.php?id=public:user_software:documentation:ndppp#averager
         The default is 4.
-    freq_step : int, optional
+    freq_step : integer or float, optional
         Averaging step in frequency. For more see
         https://www.astron.nl/lofarwiki/doku.php?id=public:user_software:documentation:ndppp#averager
         The default is 4.
-    loop3_script : str, optional
+    loop3_script : string, optional
         Location of the loop 3 script. The default is `./loop3B_v1.py`.
-    phase_up : str, optional
+    phase_up : string, optional
         Stations to phase up. For more see
         https://www.astron.nl/lofarwiki/doku.php?id=public:user_software:documentation:ndppp#stationadder
         The default is `{ST001:'CS*'}` which adds the core stations to form
         ST001.
-    filter_cmd : str, optional
+    filter_cmd : string, optional
         Stations to filter. For more see
         https://www.astron.nl/lofarwiki/doku.php?id=public:user_software:documentation:ndppp#filter
         The default is `'!CS*&*'` which removes the core stations.
     suffix : str, optional
         String to locate measurement sets outputted by the apply_tec step in
         the LB-Split-Calibrators.parset. The default is `.apply_tec`.
-    column_in : str, optional
+    column_in : string, optional
         Name of the column in the measurement set where the data are. The
         default is `DATA`.
-    directions_file : str, optional
+    directions_file : string, optional
         Filepath to the CSV containing the directions to create h5parms for.
         The file should have a header with Source_id, RA, Dec, and Units.
         Values should be comma separated. Units of radians or degrees are
@@ -2733,7 +2762,7 @@ def main(calibrators_ms, delaycal_ms='../L*_SB001_*_*_1*MHz.msdpppconcat',
     try:
         print('and len if a list:', len(msouts_tec))
         print('And parsets! dont forget them!', type(parsets), parsets)
-    except:
+    except (ValueError, KeyError, IndexError, TypeError):
         pass
     # print('Solving for residual TEC in {} directions on {} CPUs in '
     #       'parallel'.format(len(parsets_tec), cores))
