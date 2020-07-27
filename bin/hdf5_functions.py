@@ -23,7 +23,7 @@ import losoto.h5parm as lh5  # on CEP3, "module load losoto"
 import pyrap.tables as pt
 import logging
 
-__author__ = 'Sean Mooney'
+__author__ = 'Sean and Alex'
 
 # short term ------------------------------------------------------------------
 # TODO fix the big error on line 1480 and remove debugging print statements
@@ -243,101 +243,126 @@ def combine_h5s(phase_h5='', amplitude_h5='', tec_h5='', loop3_dir=''):
     p_antenna = p.getSolset('sol000').getAnt().items()
 
     a = lh5.h5parm(amplitude_h5)
-    a_soltab_A = a.getSolset('sol000').getSoltab('amplitude000')
-    a_soltab_theta = a.getSolset('sol000').getSoltab('phase000')
+    a_soltab = a.getSolset('sol000').getSoltab('amplitude000')
     a_source = a.getSolset('sol000').getSou().items()
     a_antenna = a.getSolset('sol000').getAnt().items()
 
+    t = lh5.h5parm(tec_h5)
+    t_soltab_phase = t.getSolset('sol000').getSoltab('phase000')
+    t_soltab_tec = t.getSolset('sol000').getSoltab('tec000')
+
+    #t_source = t.getSolset('sol000').getSou().items()
+    #t_antenna = t.getSolset('sol000').getAnt().items()
+
     # reorder axes
-    desired_axesNames = ['time', 'freq', 'ant', 'pol']  # NOTE no 'dir' axis
+    desired_axesNames = ['time', 'freq', 'ant', 'pol'] # NOTE no 'dir' axis
+    desired_tec_axesNames = ['time', 'freq', 'ant']  # NOTE no 'dir' and 'pol' axis
     p_val_reordered = reorderAxes(p_soltab.val, p_soltab.getAxesNames(),
                                   desired_axesNames)
     p_weight_reordered = reorderAxes(p_soltab.weight, p_soltab.getAxesNames(),
                                      desired_axesNames)
 
-    a_A_val_reordered = reorderAxes(a_soltab_A.val, a_soltab_A.getAxesNames(),
+    a_val_reordered = reorderAxes(a_soltab.val, a_soltab.getAxesNames(),
                                     desired_axesNames)
-    a_A_weight_reordered = reorderAxes(a_soltab_A.weight,
-                                       a_soltab_A.getAxesNames(),
+    a_weight_reordered = reorderAxes(a_soltab.weight,
+                                       a_soltab.getAxesNames(),
                                        desired_axesNames)
 
-    a_theta_val_reordered = reorderAxes(a_soltab_theta.val,
-                                        a_soltab_theta.getAxesNames(),
-                                        desired_axesNames)
-    a_theta_weight_reordered = reorderAxes(a_soltab_theta.weight,
-                                           a_soltab_theta.getAxesNames(),
-                                           desired_axesNames)
+    t_phase_val_reordered = reorderAxes(t_soltab_phase.val,
+                                        t_soltab_phase.getAxesNames(),
+                                        desired_tec_axesNames)
+    t_phase_weight_reordered = reorderAxes(t_soltab_phase.weight,
+                                           t_soltab_phase.getAxesNames(),
+                                           desired_tec_axesNames)
+
+    t_tec_val_reordered = reorderAxes(t_soltab_tec.val,
+                                        t_soltab_tec.getAxesNames(),
+                                        desired_tec_axesNames)
+    t_tec_weight_reordered = reorderAxes(t_soltab_phase.weight,
+                                           t_soltab_tec.getAxesNames(),
+                                           desired_tec_axesNames)
 
     # make new solution tables in the new h5parm
     new_h5 = phase_h5[:-3] + '_P_A.h5'  # lazy method
-    new_h5 = (phase_h5[:-3] + '_phase_diag.h5' if not tec_h5 else phase_h5[:-3]
-              + '_phase_diag_tec.h5')
+    new_h5 = phase_h5[:-3] + '_phase_diag_tec.h5'
+
     n = lh5.h5parm(new_h5, readonly=False)
 
-    n_phase_solset = n.makeSolset(solsetName='sol000')
-    source_table = n_phase_solset.obj._f_get_child('source')
+    n_solset = n.makeSolset(solsetName='sol000')
+    source_table = n_solset.obj._f_get_child('source')
     source_table.append(p_source)  # populate source and antenna tables
-    antenna_table = n_phase_solset.obj._f_get_child('antenna')
+    antenna_table = n_solset.obj._f_get_child('antenna')
     antenna_table.append(p_antenna)
 
-    n_phase_solset.makeSoltab('phase',
+    n_solset.makeSoltab('phase',
                               axesNames=desired_axesNames,
                               axesVals=[p_soltab.time, p_soltab.freq,
                                         p_soltab.ant, p_soltab.pol],
                               vals=p_val_reordered,
                               weights=p_weight_reordered)
 
-    n_amplitude_solset = n.makeSolset(solsetName='sol001')
-    source_table = n_amplitude_solset.obj._f_get_child('source')
-    source_table.append(a_source)  # populate source and antenna tables
-    antenna_table = n_amplitude_solset.obj._f_get_child('antenna')
-    antenna_table.append(a_antenna)
-
-    n_amplitude_solset.makeSoltab('amplitude',
+    n_solset.makeSoltab('amplitude',
                                   axesNames=desired_axesNames,
-                                  axesVals=[a_soltab_A.time, a_soltab_A.freq,
-                                            a_soltab_A.ant, a_soltab_A.pol],
-                                  vals=a_A_val_reordered,
-                                  weights=a_A_weight_reordered)
+                                  axesVals=[a_soltab.time, a_soltab.freq,
+                                            a_soltab.ant, a_soltab.pol],
+                                  vals=a_val_reordered,
+                                  weights=a_weight_reordered)
 
-    n_amplitude_solset.makeSoltab('phase',
-                                  axesNames=desired_axesNames,
-                                  axesVals=[a_soltab_theta.time,
-                                            a_soltab_theta.freq,
-                                            a_soltab_theta.ant,
-                                            a_soltab_theta.pol],
-                                  vals=a_theta_val_reordered,
-                                  weights=a_theta_weight_reordered)
+    n_solset.makeSoltab('tec_phase',
+                                  axesNames=desired_tec_axesNames,
+                                  axesVals=[t_soltab_phase.time, t_soltab_phase.freq,
+                                            t_soltab_phase.ant],
+                                  vals=t_phase_val_reordered,
+                                  weights=t_phase_weight_reordered)
 
-    if tec_h5:  # if a hdf5 with tec solutions is given too, put this in the
-        #         new hdf5 also
-        t = lh5.h5parm(tec_h5)
-        t_soltab = t.getSolset('sol000').getSoltab('tec000')
+    n_solset.makeSoltab('tec',
+                                  axesNames=desired_tec_axesNames,
+                                  axesVals=[t_soltab_tec.time, t_soltab_tec.freq,
+                                            t_soltab_tec.ant],
+                                  vals=t_tec_val_reordered,
+                                  weights=t_tec_weight_reordered)
 
-        t_val = reorderAxes(t_soltab.val, t_soltab.getAxesNames(),
-                            ['time', 'freq', 'ant'])  # NOTE no 'dir' axis
-        t_weight = reorderAxes(t_soltab.weight, t_soltab.getAxesNames(),
-                               ['time', 'freq', 'ant'])  # NOTE no 'dir' axis
 
-        t_solset = n.makeSolset(solsetName='sol002')  # in new h5parm
-        t_source = t_solset.obj._f_get_child('source')
-        t_source.append(t.getSolset('sol000').getSou().items())
-        t_antenna = t_solset.obj._f_get_child('antenna')
-        t_antenna.append(t.getSolset('sol000').getAnt().items())
 
-        t_solset.makeSoltab('tec',
-                            axesNames=['time', 'freq', 'ant'],
-                            axesVals=[t_soltab.time, t_soltab.freq,
-                                      t_soltab.ant],
-                            vals=t_val,
-                            weights=t_weight)
+    # n_amplitude_solset.makeSoltab('phase',
+    #                               axesNames=desired_axesNames,
+    #                               axesVals=[a_soltab_theta.time,
+    #                                         a_soltab_theta.freq,
+    #                                         a_soltab_theta.ant,
+    #                                         a_soltab_theta.pol],
+    #                               vals=a_theta_val_reordered,
+    #                               weights=a_theta_weight_reordered)
 
-        t.close()
+    # if tec_h5:  # if a hdf5 with tec solutions is given too, put this in the
+    #     #         new hdf5 also
+    #     t = lh5.h5parm(tec_h5)
+    #     t_soltab = t.getSolset('sol000').getSoltab('tec000')
+    #
+    #     t_val = reorderAxes(t_soltab.val, t_soltab.getAxesNames(),
+    #                         ['time', 'freq', 'ant'])  # NOTE no 'dir' axis
+    #     t_weight = reorderAxes(t_soltab.weight, t_soltab.getAxesNames(),
+    #                            ['time', 'freq', 'ant'])  # NOTE no 'dir' axis
+    #
+    #     t_solset = n.makeSolset(solsetName='sol002')  # in new h5parm
+    #     t_source = t_solset.obj._f_get_child('source')
+    #     t_source.append(t.getSolset('sol000').getSou().items())
+    #     t_antenna = t_solset.obj._f_get_child('antenna')
+    #     t_antenna.append(t.getSolset('sol000').getAnt().items())
+    #
+    #     t_solset.makeSoltab('tec',
+    #                         axesNames=['time', 'freq', 'ant'],
+    #                         axesVals=[t_soltab.time, t_soltab.freq,
+    #                                   t_soltab.ant],
+    #                         vals=t_val,
+    #                         weights=t_weight)
+
+
 
     # tidy up
     p.close()
     a.close()
     n.close()
+    t.close()
     logging.info('Created', new_h5)
     return new_h5
 
@@ -714,7 +739,7 @@ def build_soltab(soltab, working_data, solset):
             values = np.expand_dims(tab.val, 0)
             weights = np.expand_dims(tab.weight, 0)
 
-        if soltab == 'tec':  # tec will not have a polarisation axis
+        if soltab == 'tec000' or soltab == 'tec_phase000':  # tec will not have a polarisation axis
             reordered_values = reorderAxes(values, axes_names,
                                            ['time', 'freq', 'ant', 'dir'])
             reordered_weights = reorderAxes(weights, axes_names,
@@ -1160,7 +1185,7 @@ def dir2phasesol(mtf, directions=[]):
     try:  # bring across amplitude solutions if there are any
         vals, weights, time, freq = build_soltab(soltab='amplitude',
                                                  working_data=working_data,
-                                                 solset='sol001')
+                                                 solset='sol000')
         q = new_h5parm
         logging.info('Putting amplitude soltuions in sol001 in {}.'.format(q))
         amp_solset = h.makeSolset('sol001')
@@ -1172,7 +1197,7 @@ def dir2phasesol(mtf, directions=[]):
         # amplitude solutions have a phase component too
         vals, weights, time, freq = build_soltab(soltab='phase',
                                                  working_data=working_data,
-                                                 solset='sol001')
+                                                 solset='sol000')
         amp_solset.makeSoltab('phase',
                               axesNames=['time', 'freq', 'ant', 'pol', 'dir'],
                               axesVals=[time, freq, ant, pol, dir_],
@@ -1195,7 +1220,7 @@ def dir2phasesol(mtf, directions=[]):
     # try:  # bring across tec solutions if there are any
     vals, weights, time, freq = build_soltab(soltab='tec',
                                              working_data=working_data,
-                                             solset='sol002')
+                                             solset='sol000')
     logging.info('Putting TEC soltuions in sol002 in {}.'.format(new_h5parm))
     tec_solset = h.makeSolset('sol002')
     tec_solset.makeSoltab('tec',
@@ -1297,10 +1322,11 @@ def apply_h5parm(h5parm, ms, col_out='DATA', solutions=['phase'], tidy=False,
     column_out : string, optional
         The column NDPPP writes to. The default is `DATA`.
     solutions : string, optional
-        Which solutions to apply. For both phase and amplitude, pass ['phase',
-        'amplitude'] (where it assumes phase solutions are in sol000 and the
-        amplitude/phase diagonal solutions are in sol001). The default is
-        [`phase`].
+        Which solutions to apply. For phase, amplitude and tec, pass ['phase',
+        'amplitude', 'tec'] (where it assumes all solutions are in sol000).
+        'tec_phase000' for phase, 'amplitude000' and 'phase000' for diagonal solutions
+        and 'tec000' for tec solutions.
+        The default is [`phase`].
     tidy : boolean, optional
         Whether to tidy up afterwards by deleting the parset. The default is
         False.
@@ -1343,29 +1369,12 @@ def apply_h5parm(h5parm, ms, col_out='DATA', solutions=['phase'], tidy=False,
         f.write('msout                               = {}\n'.format(msout))
         f.write('msout.datacolumn                    = {}\n\n'.format(col_out))
 
-        if 'amplitude' in solutions and 'tec' in solutions:
-            logging.info('Applying phase, amplitude, and TEC solutions in'
-                         ' %s to %s' % (h5parm, ms))
-            f.write('steps                               = [phaseshift, '
-                    'average, stationadder, filter, apply_phase, '
-                    'apply_diagonal, apply_tec]\n\n')
-        elif 'amplitude' not in solutions and 'tec' in solutions:
-            logging.info('Applying phase and TEC solutions in'
-                         ' %s to %s' % (h5parm, ms))
-            f.write('steps                               = [phaseshift, '
-                    'average, stationadder, filter, apply_phase, '
-                    'apply_tec]\n\n')
-        elif 'amplitude' in solutions and 'tec' not in solutions:
-            logging.info('Applying phase and amplitude solutions in'
-                         ' %s to %s' % (h5parm, ms))
-            f.write('steps                               = [phaseshift, '
-                    'average, stationadder, filter, apply_phase, '
-                    'apply_diagonal]\n\n')
-        else:
-            logging.info('Applying phase solutions in'
-                         ' %s to %s' % (h5parm, ms))
-            f.write('steps                               = [phaseshift, '
-                    'average, stationadder, filter, apply_phase]\n\n')
+
+        logging.info('Applying phase, amplitude, and TEC solutions in'
+                     ' %s to %s' % (h5parm, ms))
+        f.write('steps                               = [phaseshift, '
+                'average, stationadder, filter, apply_solutions]\n\n')
+
 
         f.write('phaseshift.type                     = phaseshift\n')
         f.write('phaseshift.phasecenter              = '
@@ -1380,26 +1389,16 @@ def apply_h5parm(h5parm, ms, col_out='DATA', solutions=['phase'], tidy=False,
         f.write('filter.type                         = filter\n')
         f.write('filter.baseline                     = '
                 '{}\n'.format(filter_cmd))
-        f.write('filter.remove                       = True\n\n')
-        f.write('apply_phase.type                    = applycal\n')
-        f.write('apply_phase.parmdb                  = {}\n'.format(h5parm))
-        f.write('apply_phase.solset                  = sol000\n')
-        f.write('apply_phase.correction              = phase000\n\n')
-
-        if 'amplitude' in solutions:
-            f.write('apply_diagonal.type                 = applycal\n')
-            f.write('apply_diagonal.parmdb               = %s\n' % h5parm)
-            f.write('apply_diagonal.solset               = sol001\n')
-            f.write('apply_diagonal.steps                = [amplitude, '
-                    'phase]\n')
-            f.write('apply_diagonal.amplitude.correction = amplitude000\n')
-            f.write('apply_diagonal.phase.correction     = phase000\n\n')
-
-        if 'tec' in solutions:
-            f.write('apply_tec.type                      = applycal\n')
-            f.write('apply_tec.parmdb                    = %s\n' % h5parm)
-            f.write('apply_tec.solset                    = sol002\n')
-            f.write('apply_tec.correction                = tec000\n')
+        f.write('filter.remove                        = True\n\n')
+        f.write('apply_solutions.type                 = applycal\n')
+        f.write('apply_solutions.parmdb               = {}\n'.format(h5parm))
+        f.write('apply_solutions.solset               = sol000\n')
+        f.write('apply_solutions.steps                = [tec_phase, amplitude '
+                                                        'phase, tec]\n')
+        f.write('apply_solutions.tec_phase.correction = tec_phase\n\n')
+        f.write('apply_solutions.amplitude.correction = amplitude000\n\n')
+        f.write('apply_solutions.phase.correction     = phase000\n\n')
+        f.write('apply_solutions.tec.correction       = tec000\n\n')
 
     if execute:
         subprocess.check_output(['NDPPP', parset])
@@ -1616,9 +1615,9 @@ def rejig_solsets(h5parm, is_tec=True, add_tec_to_phase=False):
     h2 = lh5.h5parm(new_h5parm, readonly=False)  # new h5parm
 
     # get sol000/phase000 and sol001/phase000,amplitude000 from the old h5parm
-    phase = h1.getSolset('sol000').getSoltab('phase000')
-    diagonal_amplitude = h1.getSolset('sol001').getSoltab('amplitude000')
-    diagonal_phase = h1.getSolset('sol001').getSoltab('phase000')
+    phase = h1.getSolset('sol000').getSoltab('tec_phase000')
+    diagonal_amplitude = h1.getSolset('sol000').getSoltab('amplitude000')
+    diagonal_phase = h1.getSolset('sol000').getSoltab('phase000')
 
     # use add_amplitude_and_phase_solutions to add sol000/phase000 to
     # sol001/phase000, amplitude000 (set the amplitude for the phase-only term
@@ -1628,7 +1627,7 @@ def rejig_solsets(h5parm, is_tec=True, add_tec_to_phase=False):
     time = make_new_times(phase.time, diagonal_phase.time)  # get new time axis
 
     # sort the soltab axes so they are the same before summing
-    ph_val_srt, ph_wgt_srt = sort_axes(phase)
+    ph_val_srt, ph_wgt_srt = sort_axes(phase,tec=True)
     diag_A_val_srt, diag_A_wgt_srt = sort_axes(diagonal_amplitude)
     diag_P_val_srt, diag_P_wgt_srt = sort_axes(diagonal_phase)
 
@@ -1789,7 +1788,7 @@ def rejig_solsets(h5parm, is_tec=True, add_tec_to_phase=False):
 
         # sort as time, frequency, antenna, polarisation [and direction]
         tec_sort_value, tec_sort_weight = sort_axes(tec, tec=True)
-        phase_sort_value, phase_sort_weight = sort_axes(phase, tec=False)
+        phase_sort_value, phase_sort_weight = sort_axes(phase, tec=True)
 
         # get my_phase and my_tec on the same time axis
         time_new = make_new_times(tec.time, phase.time)
@@ -2122,10 +2121,10 @@ def update_list(initial_h5parm, incremental_h5parm, mtf, threshold=0.25,
     antenna_table.append(antenna_soltab)  # from dictionary to list
 
     if amplitudes_included:  # include amplitude solutions if they exist
-        initial_diagonal_A = f.getSolset('sol001').getSoltab('amplitude000')
-        initial_diagonal_P = f.getSolset('sol001').getSoltab('phase000')
+        initial_diagonal_A = f.getSolset('sol000').getSoltab('amplitude000')
+        initial_diagonal_P = f.getSolset('sol000').getSoltab('phase000')
 
-        sol001 = g.getSolset('sol001')
+        sol001 = g.getSolset('sol000')
         incremental_diagonal_A = sol001.getSoltab('amplitude000')
         incremental_diagonal_P = sol001.getSoltab('phase000')
 
@@ -2321,8 +2320,8 @@ def update_list(initial_h5parm, incremental_h5parm, mtf, threshold=0.25,
                           weights=P_weights)  # creates phase000
 
         # copy source and antenna tables into the new solution set
-        source_soltab = f.getSolset('sol001').getSou().items()  # dict to list
-        antenna_soltab = f.getSolset('sol001').getAnt().items()  # dict to list
+        source_soltab = f.getSolset('sol000').getSou().items()  # dict to list
+        antenna_soltab = f.getSolset('sol000').getAnt().items()  # dict to list
 
         source_table = solset.obj._f_get_child('source')
         source_table.append(source_soltab)
@@ -2335,7 +2334,7 @@ def update_list(initial_h5parm, incremental_h5parm, mtf, threshold=0.25,
         # implemented into loop 3 soon
 
         # assign all the information to variables
-        solset_tec, soltab_tec = 'sol002', 'tec000'
+        solset_tec, soltab_tec = 'sol000', 'tec000'
 
         initial_tec = f.getSolset(solset_tec).getSoltab(soltab_tec)
         try:  # may not contain a direction dimension
@@ -2471,8 +2470,8 @@ def update_list(initial_h5parm, incremental_h5parm, mtf, threshold=0.25,
     return rejigged_h5parm
 
 
-def plot_h5(h5parm, ncpu=4, phasesol='sol000', diagsol='sol001',
-            tecsol='sol002'):
+def plot_h5(h5parm, ncpu=4, phasesol='sol000', diagsol='sol000',
+            tecsol='sol000'):
     """Make losoto plots for a h5parm.
 
     Parameters
@@ -2511,7 +2510,7 @@ def plot_h5(h5parm, ncpu=4, phasesol='sol000', diagsol='sol001',
         f.write('plotFlag    = False\n')
         f.write('axesInPlot  = [time]\n')
         f.write('prefix      = {}_phase_\n'.format(prefix))
-        f.write('soltab      = {}/phase000\n'.format(phasesol))
+        f.write('soltab      = {}/tec_phase000\n'.format(phasesol))
         f.write('axisInTable = ant\n')
         f.write('operation   = PLOT\n')
         f.write('refAnt      = ST001\n')
@@ -2593,8 +2592,8 @@ def add_history_to_h5parm(h5_file, working_file=''):
 
 def main(calibrators_ms, delaycal_ms='../L*_SB001_*_*_1*MHz.msdpppconcat',
          mtf='mtf.txt', threshold=0.25, cores=4, time_step=4, freq_step=4,
-         loop3_script='./loop3B_v1.py', phase_up="{ST001:'CS*'}",
-         filter_cmd="'!CS*&*'", suffix='.apply_tec', column_in='DATA',
+         loop3_script='../lofar-vlbi/bin/loop3B_v1.py', phase_up="{ST001:'CS*'}",
+         filter_cmd="'!CS*&*'", suffix='.apply_tec.selfcal', column_in='DATA',
          directions_file='loop2_directions.csv'):
     """Run loop 2 of the LOFAR long-baseline pipeline, creating h5parms with
     solutions for any given directions.
@@ -2707,15 +2706,15 @@ def main(calibrators_ms, delaycal_ms='../L*_SB001_*_*_1*MHz.msdpppconcat',
     sources = []
     for ms in ms_list:
         if ms.split('/')[-1][:5] != 'loop3':
-            sources.append(ms.split('/')[-1][:-19])
+            sources.append(ms.split('/')[-1][:-32])
     logging.info('Found', len(ms_list), 'sources:', ', '.join(sources))
 
     # for each calibrator source group the, phase, diagonal, and tec solutions
     # in one h5parm, and evaluate the goodness of the phase solutions
     for i, (ms, source) in enumerate(zip(ms_list, sources)):
-        phase_h5 = glob.glob(ms.replace(suffix, '.apply_tec_0*_c0.h5'))[0]
-        amplitude_h5 = glob.glob(ms.replace(suffix, '.apply_tec_A_*_c0.h5'))[0]
-        tec_h5 = ms.replace(suffix, '.MS_tec.h5')
+        phase_h5 = glob.glob(ms[:-32]+'_sols.h5')[0]
+        amplitude_h5 = glob.glob(ms[:-32]+'_sols.h5')[0]
+        tec_h5 = glob.glob(ms.replace(suffix, '.ms_tec.h5'))[0]
 
         logging.info('Source {}/{}:'.format(i + 1, len(ms_list)), source)
         logging.info(source, 'MS:', ms)
@@ -2867,7 +2866,7 @@ if __name__ == '__main__':
                                      formatter_class=formatter_class)
 
     parser.add_argument('ms',
-                        required=False,
+                        #required=False,
                         type=str,
                         default=('/data020/scratch/sean/letsgetloopy/SILTJ13' +
                                  '5044.06+544752.7_L693725_phasecal.' +
@@ -2876,38 +2875,37 @@ if __name__ == '__main__':
 
     parser.add_argument('-m',
                         '--mtf',
-                        required=False,
+                        #required=False,
                         type=str,
                         default='/data020/scratch/sean/letsgetloopy/mtf.txt',
                         help='master text file')
 
     parser.add_argument('-t',
                         '--threshold',
-                        required=False,
+                        #required=False,
                         type=float,
                         default=0.25,
                         help='threshold for the xx-yy statistic goodness')
 
     parser.add_argument('-n',
                         '--cores',
-                        required=False,
+                        #required=False,
                         type=int,
                         default=4,
                         help='number of cores to use')
 
     parser.add_argument('-d',
-                        '--directions',
-                        type=float,
-                        default=[],
-                        nargs='+',
-                        help='source positions (radians; RA Dec RA Dec...)')
+                        '--directions_file',
+                        type=str,
+                        default="./sources.csv",
+                        help='source positions file')
 
     args = parser.parse_args()
     ms = args.ms
     mtf = args.mtf
     threshold = args.threshold
     cores = args.cores
-    directions = args.directions
+    directions_file = args.directions_file
 
     main(ms, delaycal_ms=ms, mtf=mtf, threshold=threshold, cores=cores,
-         directions=directions)
+         directions_file=directions_file)
